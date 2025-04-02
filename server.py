@@ -57,7 +57,7 @@ def get_map():
 @app.route('/launch_sequence', methods=['GET'])
 def launch_sequence():
     global proc
-    proc = subprocess.Popen(["/bin/python3", "/home/clover/Desktop/find_cord.py"], shell=False)
+    proc = subprocess.Popen(["/bin/python3", "/home/pi/find_cord.py"], shell=False)
     print("launched")
     return jsonify({})
 
