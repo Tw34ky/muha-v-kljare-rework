@@ -23,7 +23,6 @@ def get_position() -> dict:
     return rq.get(f"http://{HOST}:{PORT}/coords").json()
 
 def draw_pipeline() -> dict:
-    # data = rq.get("some_shit").json()
-    data = {"nodes": [{"x": 1.0, "y": 2.0}, {"x": 5.0, "y": 4.0}]}
+    data = rq.get("http://157.180.22.113:8000/coords_1.json").json()
     return data
     
