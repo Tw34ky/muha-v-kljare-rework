@@ -16,6 +16,7 @@ class CloverAPI:
     get_telemetry = rospy.ServiceProxy('get_telemetry', srv.GetTelemetry)
     land = rospy.ServiceProxy('land', Trigger)
     arming = rospy.ServiceProxy('mavros/cmd/arming', CommandBool)
+    navigate = rospy.ServiceProxy('navigate', srv.Navigate)
     def __new__(cls):
         if not hasattr(cls, 'instance'):
             cls.instance = super(CloverAPI, cls).__new__(cls)
