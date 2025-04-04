@@ -10,8 +10,10 @@ from clover import long_callback
 
 rospy.init_node('flight')
 fourcc = cv2.VideoWriter_fourcc(*'XVID')
+fourcc2 = cv2.VideoWriter_fourcc(*'XVID')
+
 out_main = cv2.VideoWriter('main_camera.avi', fourcc, 30.0, (320,240))
-out_thermal = cv2.VideoWriter('thermal.avi', fourcc, 25.0, (320,240))
+out_thermal = cv2.VideoWriter('thermal.avi', fourcc2, 25.0, (256,192))
 bridge = CvBridge()
 
 @long_callback
@@ -22,7 +24,7 @@ def image_callback(data):
 @long_callback
 def thermal_callback(data):
     img = bridge.imgmsg_to_cv2(data, 'bgr8')  # OpenCV image 
-    out_thermal.write(img)   
+    out_thermal.write(img)
 
 get_telemetry = rospy.ServiceProxy('get_telemetry', srv.GetTelemetry)
 navigate = rospy.ServiceProxy('navigate', srv.Navigate)
@@ -55,19 +57,19 @@ def navigate_wait(x=0, y=0, z=0, yaw=float('nan'), speed=0.5, frame_id='', auto_
 
 coords = cords()
 coords = ((coords[0]["x"], coords[0]["y"]), (coords[1]["x"], coords[1]["y"]))
-navigate_wait(z=1, frame_id='body', auto_arm=True)
+navigate_wait(z=0.7, frame_id='body', auto_arm=True)
 
 navigate_wait(x=6, y=0.6, z=1.0, frame_id='aruco_map')
 
 navigate_wait(x=3.95, y=0.4, z=1.0, frame_id='aruco_map')
 image_sub = rospy.Subscriber('/main_camera/image_raw', Image, image_callback)
 thermal_sub = rospy.Subscriber('/cv/debug', Image, thermal_callback)
-rospy.sleep(1)
+rospy.sleep(5)
 navigate_wait(x=6.45, y=3.4, z=1.0, frame_id='aruco_map')
 out_main.release()
 out_thermal.release()
-navigate_wait(x=coords[0][0], y=coords[0][1], z=1.0, frame_id='aruco_map')
-navigate_wait(x=coords[1][0], y=coords[1][0], z=1.0, frame_id='aruco_map')
+navigate_wait(x=coords[0][0], y=coords[0][1], z=1.0, yaw=angle(coords[0][0], coords[0][1],coords[1][0], coords[1][1]), frame_id='aruco_map')
+navigate_wait(x=coords[1][0], y=coords[1][1], z=1.0, frame_id='aruco_map')
 
 rospy.sleep(5)
 
