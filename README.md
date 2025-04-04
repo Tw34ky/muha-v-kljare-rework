@@ -1,4 +1,4 @@
-<img src="https://github.com/user-attachments/assets/e7a4a597-666d-4478-9823-61bf8d770b44" width = 50%></img>
+<img src="https://github.com/user-attachments/assets/e7a4a597-666d-4478-9823-61bf8d770b44"></img>
 # muha-v-kljare
 Репозиторий команды "Муха в кляре" на НТО 2025 по профилю "Летающая робототехника"
 ## Решенные задачи
