@@ -502,3 +502,272 @@ class CloverAPI:
 4. **Безопасность**: Реализованы функции экстренной остановки и отключения моторов.
 
 5. **Гибкость**: Возможность добавлять пользовательские маркеры и цели через API.
+# Дополнительные скрипты для управления дроном Clover
+
+## Описание файлов
+
+### 1. ggsell.py - Обработка тепловизионного изображения
+
+```python
+import rospy
+import cv2
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+from clover import long_callback
+import numpy as np
+
+# Инициализация ROS узла
+rospy.init_node('cv')
+bridge = CvBridge()
+
+@long_callback
+def image_callback(data):
+    """
+    Callback-функция для обработки изображения с тепловизора.
+    Разделяет изображение на две части, применяет цветовую карту к первой половине
+    и публикует результат в топик для отладки.
+    """
+    img = bridge.imgmsg_to_cv2(data, 'bgr8')  # Конвертация ROS сообщения в OpenCV изображение
+    a, b = np.array_split(img, 2)  # Разделение изображения на две части
+    colorized = cv2.applyColorMap(a, cv2.COLORMAP_JET)  # Применение цветовой карты
+    
+    # Публикация обработанного изображения
+    image_pub.publish(bridge.cv2_to_imgmsg(colorized, 'bgr8'))
+
+# Подписка на топик с изображением тепловизора и публикатор для отладочного изображения
+image_sub = rospy.Subscriber('/thermal_camera/image_raw', Image, image_callback)
+image_pub = rospy.Publisher('~debug', Image)
+
+rospy.spin()  # Запуск обработки сообщений
+```
+
+**Назначение**: Этот скрипт обрабатывает изображения с тепловизора, применяя к ним цветовую карту для лучшей визуализации температурных данных. Обработанные изображения публикуются в отдельный топик для отладки.
+
+### 2. land.py - Посадка дрона
+
+```python
+import rospy
+import math
+from std_srvs.srv import Trigger
+from clover import srv
+
+# Инициализация ROS сервисов
+get_telemetry = rospy.ServiceProxy('get_telemetry', srv.GetTelemetry)
+navigate = rospy.ServiceProxy('navigate', srv.Navigate)
+land = rospy.ServiceProxy('land', Trigger)
+
+def navigate_wait(x=0, y=0, z=0, yaw=0, speed=1, frame_id='', auto_arm=False, tolerance=0.2):
+    """
+    Функция для навигации с ожиданием достижения цели.
+    Параметры:
+    - x, y, z: координаты цели
+    - yaw: ориентация по курсу
+    - speed: скорость движения
+    - frame_id: система координат
+    - auto_arm: автоматическое включение моторов
+    - tolerance: допустимая погрешность достижения цели
+    """
+    navigate(x=x, y=y, z=z, yaw=yaw, speed=speed, frame_id=frame_id, auto_arm=auto_arm)
+
+    # Ожидание достижения цели
+    while not rospy.is_shutdown():
+        telem = get_telemetry(frame_id='navigate_target')
+        if math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2) < tolerance:
+            break
+        rospy.sleep(0.2)
+
+# Последовательность команд для посадки
+navigate_wait(x=6, y=0.6, z=1.5, frame_id='aruco_map')  # Перелет в точку посадки
+navigate_wait(z=0.5, frame_id='aruco_map')  # Снижение
+land()  # Посадка
+```
+
+**Назначение**: Этот скрипт выполняет последовательность команд для безопасной посадки дрона в заданной точке. Сначала дрон перемещается в точку над местом посадки, затем снижается и выполняет посадку.
+
+### 3. square.py - Выполнение полетного задания
+
+```python
+import rospy
+import math
+from clover import srv
+from std_srvs.srv import Trigger
+import requests as rq
+import cv2
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+from clover import long_callback
+
+# Инициализация ROS узла
+rospy.init_node('flight')
+
+# Настройка видеозаписи
+fourcc = cv2.VideoWriter_fourcc(*'XVID')
+out_main = cv2.VideoWriter('main_camera.avi', fourcc, 30.0, (320,240))  # Для основной камеры
+out_thermal = cv2.VideoWriter('thermal.avi', fourcc, 25.0, (320,240))  # Для тепловизора
+bridge = CvBridge()
+
+@long_callback
+def image_callback(data):
+    """Callback для записи изображения с основной камеры"""
+    img = bridge.imgmsg_to_cv2(data, 'bgr8')
+    out_main.write(img)
+
+@long_callback
+def thermal_callback(data):
+    """Callback для записи изображения с тепловизора"""
+    img = bridge.imgmsg_to_cv2(data, 'bgr8')
+    out_thermal.write(img)
+
+# Инициализация ROS сервисов
+get_telemetry = rospy.ServiceProxy('get_telemetry', srv.GetTelemetry)
+navigate = rospy.ServiceProxy('navigate', srv.Navigate)
+navigate_global = rospy.ServiceProxy('navigate_global', srv.NavigateGlobal)
+set_altitude = rospy.ServiceProxy('set_altitude', srv.SetAltitude)
+set_yaw = rospy.ServiceProxy('set_yaw', srv.SetYaw)
+set_yaw_rate = rospy.ServiceProxy('set_yaw_rate', srv.SetYawRate)
+set_position = rospy.ServiceProxy('set_position', srv.SetPosition)
+set_velocity = rospy.ServiceProxy('set_velocity', srv.SetVelocity)
+set_attitude = rospy.ServiceProxy('set_attitude', srv.SetAttitude)
+set_rates = rospy.ServiceProxy('set_rates', srv.SetRates)
+land = rospy.ServiceProxy('land', Trigger)
+
+def cords() -> dict:
+    """Получение координат точек маршрута с сервера"""
+    data = rq.get("http://157.180.22.113:8080/coords_1.json", 
+                 headers={"Authorization": f"Bearer a16043eb-ca30-4f42-9b02-da727ded44a4"}).json()
+    return data['nodes']
+
+def navigate_wait(x=0, y=0, z=0, yaw=float('nan'), speed=0.5, frame_id='', auto_arm=False, tolerance=0.2):
+    """Функция навигации с ожиданием достижения цели"""
+    navigate(x=x, y=y, z=z, yaw=yaw, speed=speed, frame_id=frame_id, auto_arm=auto_arm)
+    
+    while not rospy.is_shutdown():
+        telem = get_telemetry(frame_id='navigate_target')
+        if math.sqrt(telem.x ** 2 + telem.y ** 2 + telem.z ** 2) < tolerance:
+            break
+        rospy.sleep(0.2)
+
+# Основная логика выполнения полета
+coords = cords()  # Получение координат точек маршрута
+coords = ((coords[0]["x"], coords[0]["y"]), (coords[1]["x"], coords[1]["y"]))
+
+navigate_wait(z=1, frame_id='body', auto_arm=True)  # Взлет
+navigate_wait(x=6, y=0.6, z=1.0, frame_id='aruco_map')  # Перелет к первой точке
+navigate_wait(x=3.95, y=0.4, z=1.0, frame_id='aruco_map')  # Перелет ко второй точке
+
+# Подписка на камеры и начало записи
+image_sub = rospy.Subscriber('/main_camera/image_raw', Image, image_callback)
+thermal_sub = rospy.Subscriber('/cv/debug', Image, thermal_callback)
+rospy.sleep(1)
+
+navigate_wait(x=6.45, y=3.4, z=1.0, frame_id='aruco_map')  # Перелет к третьей точке
+
+# Завершение записи и возврат по точкам маршрута
+out_main.release()
+out_thermal.release()
+navigate_wait(x=coords[0][0], y=coords[0][1], z=1.0, frame_id='aruco_map')
+navigate_wait(x=coords[1][0], y=coords[1][0], z=1.0, frame_id='aruco_map')
+
+rospy.sleep(5)
+rospy.spin()
+```
+
+## Отдельное описание square.py
+
+**Назначение**: Скрипт `square.py` выполняет автономный полет дрона по заданному маршруту с одновременной записью видео с основной и тепловизионной камер.
+
+### Основные функции:
+
+1. **Запись видео**:
+   - Создаются два видеопотока: `main_camera.avi` (основная камера) и `thermal.avi` (тепловизор)
+   - Запись ведется с частотой 30 и 25 кадров/с соответственно
+   - Используется кодек XVID для сжатия видео
+
+2. **Навигация**:
+   - Получение координат точек маршрута с внешнего сервера
+   - Последовательный перелет между точками с использованием функции `navigate_wait`
+   - Автоматическое включение моторов при взлете (`auto_arm=True`)
+
+3. **Логика полета**:
+   1. Взлет на высоту 1 метр (`navigate_wait(z=1, frame_id='body', auto_arm=True)`)
+   2. Перелет к первой точке маршрута (x=6, y=0.6, z=1.0)
+   3. Перелет ко второй точке (x=3.95, y=0.4, z=1.0)
+   4. Активация подписки на камеры и начало записи видео
+   5. Перелет к третьей точке (x=6.45, y=3.4, z=1.0)
+   6. Завершение записи видео
+   7. Возврат по точкам маршрута
+   8. Завершение работы
+
+### Особенности реализации:
+
+- Использование `long_callback` для обработки изображений, что позволяет избежать блокировки основного потока
+- Получение координат маршрута с внешнего сервера по HTTP с авторизацией
+- Функция `navigate_wait` обеспечивает точное достижение каждой точки перед продолжением маршрута
+- Параллельная запись видео с двух камер
+- Использование системы координат `aruco_map` для точной навигации по маркерам
+
+Этот скрипт демонстрирует комплексное использование возможностей дрона Clover, включая автономную навигацию, работу с камерами и взаимодействие с внешними сервисами.
+Так же у нас есть получение видеопотока с тепловизора с помощью лаунча thermal_camera.launch вот его описание
+# Описание launch-файла для тепловизора
+
+## thermal_camera.launch
+
+```xml
+<launch>
+    <!-- Параметр для указания устройства видеозахвата (thermal camera) -->
+    <arg name="thermal_device" default="/dev/video1"/>
+
+    <!-- Менеджер nodelet'ов для камеры -->
+    <node pkg="nodelet" type="nodelet" name="thermal_camera_nodelet_manager" args="manager" output="screen" clear_params="true" respawn="true">
+        <!-- Количество рабочих потоков для обработки -->
+        <param name="num_worker_threads" value="2"/>
+    </node>
+
+    <!-- Узел для работы с тепловизором -->
+    <node pkg="nodelet" type="nodelet" name="thermal_camera" args="load cv_camera/CvCameraNodelet thermal_camera_nodelet_manager" launch-prefix="rosrun clover waitfile $(arg thermal_device)" clear_params="true" respawn="true">
+        <!-- Путь к устройству видеозахвата -->
+        <param name="device_path" value="$(arg thermal_device)"/>
+
+        <!-- Частота кадров (FPS) -->
+        <param name="cv_cap_prop_fps" value="25"/>
+
+        <!-- Разрешение изображения -->
+        <param name="image_width" value="256"/>
+        <param name="image_height" value="384"/>
+    </node>
+</launch>
+```
+
+## Назначение и функциональность
+
+Этот launch-файл предназначен для настройки и запуска тепловизора в системе ROS на дроне Clover. Основные функции:
+
+1. **Инициализация устройства тепловизора**:
+   - По умолчанию используется устройство `/dev/video1`
+   - Перед запуском проверяется доступность устройства через `waitfile`
+
+2. **Оптимизированная обработка изображений**:
+   - Используется механизм nodelet'ов для эффективной обработки видео
+   - Создается менеджер nodelet'ов с 2 рабочими потоками
+
+3. **Настройки камеры**:
+   - Частота кадров: 25 FPS
+   - Разрешение: 256×384 пикселей
+
+## Особенности реализации
+
+1. **Механизм nodelet'ов**:
+   - Позволяет избежать накладных расходов на межпроцессное взаимодействие
+   - Обеспечивает эффективную передачу больших объемов данных (изображений)
+
+2. **Автоматическое восстановление**:
+   - Параметр `respawn="true"` обеспечивает автоматический перезапуск при сбоях
+   - `clear_params="true"` очищает параметры при перезапуске
+
+3. **Ожидание устройства**:
+   - `launch-prefix="rosrun clover waitfile $(arg thermal_device)"` гарантирует, что узел запустится только после появления устройства
+
+4. **Гибкость конфигурации**:
+   - Основные параметры (устройство, FPS, разрешение) могут быть легко изменены
+
+Этот launch-файл интегрируется с другими компонентами системы (такими как `ggsell.py`), предоставляя обработанные изображения с тепловизора для дальнейшего анализа и визуализации.
