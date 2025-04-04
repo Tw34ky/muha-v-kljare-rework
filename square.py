@@ -58,7 +58,9 @@ def navigate_wait(x=0, y=0, z=0, yaw=float('nan'), speed=0.5, frame_id='', auto_
 coords = cords()
 coords = ((coords[0]["x"], coords[0]["y"]), (coords[1]["x"], coords[1]["y"]))
 navigate_wait(z=0.7, frame_id='body', auto_arm=True)
-
+rospy.sleep(2)
+navigate_wait(z=0.7, frame_id='body')
+rospy.sleep(2)
 navigate_wait(x=6, y=0.6, z=1.0, frame_id='aruco_map')
 
 navigate_wait(x=3.95, y=0.4, z=1.0, frame_id='aruco_map')
