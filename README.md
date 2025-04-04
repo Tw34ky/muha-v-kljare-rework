@@ -1,3 +1,4 @@
+<img src="https://github.com/user-attachments/assets/e7a4a597-666d-4478-9823-61bf8d770b44" width = 50%></img>
 # muha-v-kljare
 Репозиторий команды "Муха в кляре" на НТО 2025 по профилю "Летающая робототехника"
 ## Решенные задачи
@@ -848,4 +849,5 @@ rospy.spin()
 мадели и их документацию вы можете найти по ссылке https://drive.google.com/drive/folders/1ck_i882PoiVid2KOOVfylk9d-Tx4jJES
 вот фото наших изделий:
 
-<img src="https://github.com/user-attachments/assets/d05c9108-36bc-43aa-8ac8-0406fc918a5a"></img>
+<img src="https://github.com/user-attachments/assets/d05c9108-36bc-43aa-8ac8-0406fc918a5a" width = 50%></img>
+<img src="https://github.com/user-attachments/assets/f9e73156-564b-4f5d-975a-886c8f47dd33" width = 50%></img>
