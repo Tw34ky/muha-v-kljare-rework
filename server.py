@@ -1,104 +1,115 @@
-from flask import Flask, jsonify
-import flask
+from flask import Flask
+from flask_socketio import SocketIO, emit
 import subprocess
 from node import CloverAPI
 from config import *
 
 app = Flask("remote_panel")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 queue = []
 markers_db = []
 pipeline_db = dict()
-@app.before_request
-def get_clover_instance():
-    global clover
-    clover = CloverAPI()
 
-@app.route('/coords', methods=['GET'])
+# Initialize CloverAPI instance once
+clover = CloverAPI()
+
+# --- Socket Handlers ---
+
+@socketio.on('get_coords')
 def get_coords():
     telem = clover.get_telemetry(frame_id='aruco_map')
-    return jsonify({'x': telem.x, 'y': telem.y, 'z': telem.z})
+    emit('coords', {'x': telem.x, 'y': telem.y, 'z': telem.z})
 
-@app.route('/targets', methods=['POST', 'GET'])
-def targets():
-    payload = flask.request
-    print(queue)
-    if payload.method == 'POST':
-        queue.insert(0, payload.get_json())
-    else:
-        return jsonify({"targets": queue})
-    # TODO: validation here
-    return jsonify({})
 
-@app.route('/stop', methods=['GET'])
+@socketio.on('targets')
+def targets(data=None):
+    if data:  # Equivalent to POST
+        queue.insert(0, data)
+        emit('targets_ack', {"status": "added"})
+    else:  # Equivalent to GET
+        emit('targets', {"targets": queue})
+
+
+@socketio.on('stop')
 def stop():
+    global proc
     try:
         proc.terminate()
     except NameError:
         pass
     clover.navigate(x=0, y=0, z=0, frame_id='body')
-    # TODO: disarm
-    return jsonify({})
+    emit('stopped', {})
 
-@app.route('/disarm', methods=['GET'])
+
+@socketio.on('disarm')
 def disarm():
     clover.arming(False)
-    return jsonify({})
+    emit('disarmed', {})
 
-@app.route('/map', methods=['GET'])
+
+@socketio.on('get_map')
 def get_map():
-    print("map")
     state = clover.get_map()
     res = []
     for i in state.markers:
-        marker = {"id": i.id, "length": i.length, "x": i.pose.position.x, "y": i.pose.position.y, "z": i.pose.position.z}
+        marker = {
+            "id": i.id,
+            "length": i.length,
+            "x": i.pose.position.x,
+            "y": i.pose.position.y,
+            "z": i.pose.position.z
+        }
         res.append(marker)
-    return jsonify({"markers": res})
+    emit('map', {"markers": res})
 
-@app.route('/launch_sequence', methods=['GET'])
+
+@socketio.on('launch_sequence')
 def launch_sequence():
     global proc
-    proc = subprocess.Popen(["/bin/python3", "/home/pi/square.py"], shell=False)
-    print("launched")
-    return jsonify({})
+    proc = subprocess.Popen(
+        ["/bin/python3", "/home/pi/square.py"], shell=False
+    )
+    emit('launched', {})
 
-@app.route('/markers', methods=['POST', 'GET'])
-def markers():
-    payload = flask.request
-    if payload.method == 'POST':
-        markers_db.append(payload.get_json())
+
+@socketio.on('markers')
+def markers(data=None):
+    if data:
+        markers_db.append(data)
+        emit('markers_ack', {"status": "added"})
     else:
-        return jsonify({"markers": markers_db})
-    # TODO: validation here
-    return jsonify({})
+        emit('markers', {"markers": markers_db})
 
-@app.route('/state', methods=['GET'])
+
+@socketio.on('get_state')
 def get_state():
     bat = clover.get_battery_state()
     mavros = clover.get_state()
-    return jsonify({"voltage": bat.voltage, "percentage": bat.percentage})
+    emit('state', {"voltage": bat.voltage, "percentage": bat.percentage})
 
-@app.route('/land', methods=['GET'])
+
+@socketio.on('land')
 def land():
-    # subprocess.Popen(["/bin/python3", "/home/clover/Desktop/land.py"], shell=False)
     clover.land()
-    return jsonify({})
+    emit('landed', {})
 
-@app.route('/home', methods=['GET'])
+
+@socketio.on('home')
 def home():
     subprocess.Popen(["/bin/python3", "/home/pi/land.py"], shell=False)
-    # clover.land()
-    return jsonify({})
+    emit('homed', {})
 
-@app.route('/pipeline', methods=['POST', 'GET'])
-def pipeline():
-    payload = flask.request
-    if payload.method == 'POST':
-        pipeline_db = payload.get_json()
+
+@socketio.on('pipeline')
+def pipeline(data=None):
+    global pipeline_db
+    if data:
+        pipeline_db = data
+        emit('pipeline_ack', {"status": "updated"})
     else:
-        return jsonify(pipeline_db)
-    # TODO: validation here
-    return jsonify({})
+        emit('pipeline', pipeline_db)
+
 
 if __name__ == '__main__':
-    app.run(HOST, PORT, debug=True)
+    socketio.run(app, host=HOST, port=PORT, debug=True)
