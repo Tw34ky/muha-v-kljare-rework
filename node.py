@@ -8,7 +8,6 @@ from std_srvs.srv import Trigger
 from mavros_msgs.srv import CommandBool
 
 
-
 # def dummy_function(): pass
 # rospy.core.register_signals = dummy_function
 

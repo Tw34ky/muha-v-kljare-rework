@@ -16,10 +16,12 @@ out_main = cv2.VideoWriter('main_camera.avi', fourcc, 30.0, (320,240))
 out_thermal = cv2.VideoWriter('thermal.avi', fourcc2, 25.0, (256,192))
 bridge = CvBridge()
 
+
 @long_callback
 def image_callback(data):
     img = bridge.imgmsg_to_cv2(data, 'bgr8')  # OpenCV image 
     out_main.write(img)                 #blur imag
+
 
 @long_callback
 def thermal_callback(data):

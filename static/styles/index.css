@@ -1,0 +1,26 @@
+body { 
+  font-family: Georgia, serif;
+  margin: 0; 
+  display: flex; 
+  height: 100vh; 
+  background: #111; 
+  color: white;
+  font-family: sans-serif;
+  }
+
+#viewer {
+  width: 50%;
+  height: 100%;
+}
+
+#sidebar {
+  float: right;
+  width: 50%;
+  height: 100%;
+  background: #222;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+canvas { display: block; }
+

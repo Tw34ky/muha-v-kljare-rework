@@ -13,96 +13,104 @@
     <!-- OrbitControls (classic non-module build, works with THREE global) -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r146/examples/js/controls/OrbitControls.js"></script>
 
-
-
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: #111;
-        }
-
-        canvas {
-            display: block;
-        }
-    </style>
+    <!-- CSS sheet -->
+    <link href="{{ url_for('static', filename='styles/index.css') }}" rel="stylesheet" type="text/css"/>
+    
 </head>
 <body>
-<script>
-    // === Setup Three.js ===
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x111111);
+    <div id="viewer"></div>
+    <div id="sidebar">
+        <p class='displayValue' id="batteryValueVolts"></p>
+        <p class='displayValue' id="batteryValuePercentage"></p>
+    </div>
+    <script>
+        // === Setup Three.js ===
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
 
-    const camera = new THREE.PerspectiveCamera(
-        60,
-        window.innerWidth / window.innerHeight,
-        0.1,
-        1000
-    );
-    camera.position.set(5, 5, 5);
+        const camera = new THREE.PerspectiveCamera(
+            60,
+            window.innerWidth / window.innerHeight,
+            0.1,
+            1000
+        );
+        camera.position.set(5, 5, 5);
 
-    const renderer = new THREE.WebGLRenderer({antialias: true});
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth / 2, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
 
-    // Orbit controls (drag mouse to rotate)
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+        // Orbit controls (drag mouse to rotate)
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
 
-    // Add axes helper (X=red, Y=green, Z=blue)
-    scene.add(new THREE.AxesHelper(5));
+        // Add axes helper (X=red, Y=green, Z=blue)
+        scene.add(new THREE.AxesHelper(5));
 
-    // Lighting
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(5, 10, 7);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
+        // Lighting
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7);
 
-    // Store markers by ID
-    const markers = {};
+        const size = 10; // The size of the grid (e.g., 10 units wide and 10 units deep)
+        const divisions = 10; // The number of divisions across the grid (e.g., 10 divisions per side)
+        const gridHelper = new THREE.GridHelper(size, divisions);
 
-    function updateMarkers(markerData) {
-        markerData.forEach(m => {
-            if (!markers[m.id]) {
-                // Make a cube for each marker
-                const geometry = new THREE.BoxGeometry(m.length, m.length, m.length);
-                const material = new THREE.MeshStandardMaterial({color: 0x00ff00});
-                const cube = new THREE.Mesh(geometry, material);
-                scene.add(cube);
-                markers[m.id] = cube;
-            }
-            markers[m.id].position.set(m.x, m.y, m.z);
+        scene.add(gridHelper);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // Store markers by ID
+        const markers = {};
+
+        function updateMarkers(markerData) {
+            markerData.forEach(m => {
+                if (!markers[m.id]) {
+                    // Make a cube for each marker
+                    const geometry = new THREE.BoxGeometry(m.length, m.length, m.length);
+                    const material = new THREE.MeshStandardMaterial({color: 0x00ff00});
+                    const cube = new THREE.Mesh(geometry, material);
+                    scene.add(cube);
+                    markers[m.id] = cube;
+                }
+                markers[m.id].position.set(m.x, m.y, m.z);
+            });
+        }
+
+        // === Socket.IO ===
+
+        const socket = io();  // connects to backend
+
+        socket.on("connect", () => {
+            console.log("Connected to server, waiting for live updates...");
         });
-    }
 
-    // === Socket.IO ===
+        socket.on("state", data => { 
+            console.log(data.voltage);
+            document.getElementById("batteryValueVolts").textContent = "Battery voltage: " + data.voltage;
+            document.getElementById("batteryValuePercentage").textContent = "Battery percentage:" + data.percentage;
+        });
 
-    const socket = io();  // connects to backend
+        // Get continuous updates from backend
+        socket.on("map", data => {
+            updateMarkers(data.markers);
+        });
 
-    socket.on("connect", () => {
-        console.log("Connected to server, waiting for live updates...");
-    });
 
-    // Get continuous updates from backend
-    socket.on("map", data => {
-        updateMarkers(data.markers);
-    });
+        // Render loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
 
-    // Render loop
-    function animate() {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    }
+        animate();
 
-    animate();
-
-    // Handle resizing
-    window.addEventListener("resize", () => {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-</script>
+        // Handle resizing
+        window.addEventListener("resize", () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
 </body>
 </html>

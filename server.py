@@ -42,7 +42,7 @@ def stop():
     emit('stopped', {})
 
 
-@socketio.on('disarm')
+@app.route('disarm')
 def disarm():
     clover.arming(False)
     emit('disarmed', {})
